@@ -1,0 +1,87 @@
+#version 430
+
+layout(local_size_x = 1, local_size_y = 1) in;
+
+const float PI = 3.1415926538;
+
+const uint NUM_VERTICES = 5;
+
+struct Polygon
+{
+    vec4 color;
+    vec2 center;
+    float radius;
+    float rotation;
+};
+
+layout(std430, binding = 0) readonly buffer polygonBuffer
+{
+    Polygon polygons[];
+};
+
+struct Vertex
+{
+    vec4 color;
+    vec2 position;
+};
+
+layout(std430, binding = 1) writeonly buffer vertexBuffer
+{
+    Vertex vertices[];
+};
+
+layout(std430, binding = 2) writeonly buffer indexBuffer
+{
+    uint indices[];
+};
+
+// Transform center from [0, 1] to [-0.5, 0.5].
+vec2 transform_center(vec2 center)
+{
+    return center - 0.5;
+}
+
+// Transform rotation from [0, 1] to [0, 2 * PI].
+float transform_rotation(float rotation)
+{
+    return rotation * 2 * PI;
+}
+
+// Transform values into the proper ranges.
+Polygon transform_polygon(Polygon p)
+{
+    p.center = transform_center(p.center);
+    p.rotation = transform_rotation(p.rotation);
+    return p;
+}
+
+// Calculate the (x, y) coordinate of the nth-vertex of an n-sided regular
+// polygon with a specified radius and rotation
+vec2 generatePosition(vec2 center, float radius, float rotation,
+    uint vertexIndex)
+{ 
+    float x = cos(rotation + 2 * PI * vertexIndex / NUM_VERTICES);
+    float y = sin(rotation + 2 * PI * vertexIndex / NUM_VERTICES);
+    return center + radius * vec2(x, y);
+}
+
+void main()
+{
+    Polygon polygon = transform_polygon(polygons[0]);
+
+    for (uint i = 0; i < NUM_VERTICES; i++)
+    {
+        vertices[i].color = polygon.color;
+        vertices[i].position = generatePosition(polygon.center, polygon.radius,
+            polygon.rotation, i);
+
+        indices[i * 3] = i;
+        indices[i * 3 + 1] = NUM_VERTICES;
+        indices[i * 3 + 2] = i + 1;
+    }
+    
+    vertices[NUM_VERTICES].color = polygon.color;
+    vertices[NUM_VERTICES].position = polygon.center;
+
+    indices[NUM_VERTICES * 3 - 1] = 0;
+}
