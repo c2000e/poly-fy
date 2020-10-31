@@ -1,10 +1,13 @@
 #version 430
 
-layout(local_size_x = 1, local_size_y = 1) in;
+// local_size should always be an xy-square with side length of 2^n
+layout(local_size_x = 4, local_size_y = 4) in;
 
 const float PI = 3.1415926538;
 
 const uint NUM_VERTICES = 5;
+
+const float CELL_SIZE = 2.0 / float(gl_WorkGroupSize.x);
 
 struct Polygon
 {
@@ -23,6 +26,7 @@ struct Vertex
 {
     vec4 color;
     vec2 position;
+    vec2 cell_center;
 };
 
 layout(std430, binding = 1) writeonly buffer vertexBuffer
@@ -35,53 +39,55 @@ layout(std430, binding = 2) writeonly buffer indexBuffer
     uint indices[];
 };
 
-// Transform center from [0, 1] to [-0.5, 0.5].
-vec2 transform_center(vec2 center)
-{
-    return center - 0.5;
-}
-
-// Transform rotation from [0, 1] to [0, 2 * PI].
-float transform_rotation(float rotation)
-{
-    return rotation * 2 * PI;
-}
-
 // Transform values into the proper ranges.
-Polygon transform_polygon(Polygon p)
+Polygon transformPolygon(Polygon p)
 {
-    p.center = transform_center(p.center);
-    p.rotation = transform_rotation(p.rotation);
+    p.center = 2 * (p.center - 0.5); 
+    p.rotation = p.rotation * 2 * PI;
     return p;
+}
+
+vec2 transformVertex(vec2 vertex, vec2 cell_center)
+{
+    return cell_center + 0.5 * CELL_SIZE * vertex;
 }
 
 // Calculate the (x, y) coordinate of the nth-vertex of an n-sided regular
 // polygon with a specified radius and rotation
-vec2 generatePosition(vec2 center, float radius, float rotation,
-    uint vertexIndex)
-{ 
-    float x = cos(rotation + 2 * PI * vertexIndex / NUM_VERTICES);
-    float y = sin(rotation + 2 * PI * vertexIndex / NUM_VERTICES);
-    return center + radius * vec2(x, y);
+vec2 generatePosition(Polygon p, uint vertex_index, vec2 cell_center)
+{
+    float x = cos(p.rotation + 2 * PI * vertex_index / NUM_VERTICES);
+    float y = sin(p.rotation + 2 * PI * vertex_index / NUM_VERTICES);
+    vec2 cell_position = p.center + p.radius * vec2(x, y);
+    return transformVertex(cell_position, cell_center); 
 }
 
 void main()
 {
-    Polygon polygon = transform_polygon(polygons[0]);
+    Polygon p = transformPolygon(polygons[gl_LocalInvocationIndex]);
+
+    uint vertex_offset = (NUM_VERTICES + 1) * gl_LocalInvocationIndex;
+    uint index_offset = NUM_VERTICES * 3 * gl_LocalInvocationIndex;
+
+    vec2 cell_center = -1.0 + CELL_SIZE *
+        (vec2(gl_LocalInvocationID.xy) + 0.5);
 
     for (uint i = 0; i < NUM_VERTICES; i++)
     {
-        vertices[i].color = polygon.color;
-        vertices[i].position = generatePosition(polygon.center, polygon.radius,
-            polygon.rotation, i);
+        vertices[i + vertex_offset].color = p.color;
+        vertices[i + vertex_offset].position = generatePosition(p, i,
+                cell_center);
+        vertices[i + vertex_offset].cell_center = cell_center;
 
-        indices[i * 3] = i;
-        indices[i * 3 + 1] = NUM_VERTICES;
-        indices[i * 3 + 2] = i + 1;
+        indices[i * 3 + index_offset] = i + vertex_offset;
+        indices[i * 3 + 1 + index_offset] = NUM_VERTICES + vertex_offset;
+        indices[i * 3 + 2 + index_offset] = i + 1 + vertex_offset;
     }
     
-    vertices[NUM_VERTICES].color = polygon.color;
-    vertices[NUM_VERTICES].position = polygon.center;
+    vertices[NUM_VERTICES + vertex_offset].color = p.color;
+    vertices[NUM_VERTICES + vertex_offset].position = transformVertex(p.center,
+            cell_center);
+    vertices[NUM_VERTICES + vertex_offset].cell_center = cell_center;
 
-    indices[NUM_VERTICES * 3 - 1] = 0;
+    indices[NUM_VERTICES * 3 - 1 + index_offset] = vertex_offset;
 }

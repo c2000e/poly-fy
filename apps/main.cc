@@ -10,9 +10,9 @@
 const GLint WIDTH = 512, HEIGHT = 512;
 
 const uint NUM_VERTICES = 5;
-const uint NUM_POLYGONS = 1;
-const uint NUM_CELLS_X = 1;
-const uint NUM_CELLS_Y = 1;
+const uint NUM_CELLS_X = 4;
+const uint NUM_CELLS_Y = 4;
+const uint NUM_POLYGONS = NUM_CELLS_X * NUM_CELLS_Y;
 
 // OpenGL debugging info 
 void GLAPIENTRY MessageCallback(GLenum source, GLenum type, GLuint id,
@@ -24,7 +24,6 @@ void GLAPIENTRY MessageCallback(GLenum source, GLenum type, GLuint id,
             (type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR **" : ""), type,
             severity, message);
 }
-
 
 int main(int argc, char *argv[])
 {
@@ -69,10 +68,12 @@ int main(int argc, char *argv[])
     glEnable(GL_DEBUG_OUTPUT);
     glDebugMessageCallback(MessageCallback, 0);
 
+    glEnable(GL_CLIP_DISTANCE0);
+
     // Generate initial polygons.
-    std::vector<Polygon> polygons(1);
+    std::vector<Polygon> polygons(NUM_POLYGONS);
     std::vector<GLfloat> polygon_buffer_data;
-    for (int i = 0; i < polygons.size(); i++)
+    for (int i = 0; i < NUM_POLYGONS; i++)
     {
         polygons[i].pushTo(polygon_buffer_data);
     }
@@ -134,6 +135,9 @@ int main(int argc, char *argv[])
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat),
             (GLvoid*) (4 * sizeof(GLfloat))); 
     glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat),
+            (GLvoid*) (6 * sizeof(GLfloat)));
+    glEnableVertexAttribArray(2);
     
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, polygon_ibo);
 
@@ -172,7 +176,7 @@ int main(int argc, char *argv[])
         glMemoryBarrier(GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT
                 | GL_ELEMENT_ARRAY_BARRIER_BIT);
         glDrawElements(GL_TRIANGLES,
-                NUM_VERTICES * 3 * NUM_CELLS_X * NUM_CELLS_Y, GL_UNSIGNED_INT,
+                NUM_VERTICES * 3 * NUM_POLYGONS, GL_UNSIGNED_INT,
                 (GLvoid*) 0);
         glBindVertexArray(0);
         polygon_rend.unuse();
