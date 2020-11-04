@@ -5,9 +5,11 @@ layout(local_size_x = 4, local_size_y = 4) in;
 
 const float PI = 3.1415926538;
 
-const uint NUM_VERTICES = 5;
 
-const float CELL_SIZE = 2.0 / float(gl_WorkGroupSize.x);
+const float SCREEN_SIZE = 512.0;
+const float CELL_SIZE = SCREEN_SIZE / float(gl_WorkGroupSize.x);
+
+const uint NUM_VERTICES = 5;
 
 struct Polygon
 {
@@ -26,7 +28,7 @@ struct Vertex
 {
     vec4 color;
     vec2 position;
-    vec2 cell_center;
+    vec2 origin;
 };
 
 layout(std430, binding = 1) writeonly buffer vertexBuffer
@@ -39,55 +41,51 @@ layout(std430, binding = 2) writeonly buffer indexBuffer
     uint indices[];
 };
 
-// Transform values into the proper ranges.
-Polygon transformPolygon(Polygon p)
+vec2 cellToWorld(vec2 cell_corner, vec2 position)
 {
-    p.center = 2 * (p.center - 0.5); 
-    p.rotation = p.rotation * 2 * PI;
-    return p;
+    return cell_corner + position * CELL_SIZE;
 }
 
-vec2 transformVertex(vec2 vertex, vec2 cell_center)
+// Generate the nth position of a polygon located in a specific cell.
+vec2 generatePosition(vec2 cell_corner, Polygon p, uint n)
 {
-    return cell_center + 0.5 * CELL_SIZE * vertex;
-}
+    // Calculate position in the range [-1, 2].
+    float t = 2 * PI * n / NUM_VERTICES;
+    vec2 position = p.center + p.radius * vec2(cos(t), sin(t));
 
-// Calculate the (x, y) coordinate of the nth-vertex of an n-sided regular
-// polygon with a specified radius and rotation
-vec2 generatePosition(Polygon p, uint vertex_index, vec2 cell_center)
-{
-    float x = cos(p.rotation + 2 * PI * vertex_index / NUM_VERTICES);
-    float y = sin(p.rotation + 2 * PI * vertex_index / NUM_VERTICES);
-    vec2 cell_position = p.center + p.radius * vec2(x, y);
-    return transformVertex(cell_position, cell_center); 
+    // Map position from [-1, 2] -> [-CELL_SIZE, SCREEN_SIZE + CELL_SIZE].
+    return cellToWorld(cell_corner, position);
 }
 
 void main()
 {
-    Polygon p = transformPolygon(polygons[gl_LocalInvocationIndex]);
+    Polygon p = polygons[gl_LocalInvocationIndex];
 
-    uint vertex_offset = (NUM_VERTICES + 1) * gl_LocalInvocationIndex;
-    uint index_offset = NUM_VERTICES * 3 * gl_LocalInvocationIndex;
+    // The index this polygon's vertices start at.
+    uint v_offset = (NUM_VERTICES + 1) * gl_LocalInvocationIndex;
 
-    vec2 cell_center = -1.0 + CELL_SIZE *
-        (vec2(gl_LocalInvocationID.xy) + 0.5);
+    // The index this polygon's indices start at.
+    uint i_offset = NUM_VERTICES * 3 * gl_LocalInvocationIndex;
+
+    // The index of this polygon's center vertex.
+    uint c_offset = NUM_VERTICES + v_offset;
+
+    vec2 cell_corner = CELL_SIZE * vec2(gl_LocalInvocationID.xy);
 
     for (uint i = 0; i < NUM_VERTICES; i++)
     {
-        vertices[i + vertex_offset].color = p.color;
-        vertices[i + vertex_offset].position = generatePosition(p, i,
-                cell_center);
-        vertices[i + vertex_offset].cell_center = cell_center;
+        vertices[i + v_offset].color = p.color;
+        vertices[i + v_offset].position = generatePosition(cell_corner, p, i);
+        vertices[i + v_offset].origin = cell_corner;
 
-        indices[i * 3 + index_offset] = i + vertex_offset;
-        indices[i * 3 + 1 + index_offset] = NUM_VERTICES + vertex_offset;
-        indices[i * 3 + 2 + index_offset] = i + 1 + vertex_offset;
+        indices[i * 3 + i_offset] = i + v_offset;
+        indices[i * 3 + 1 + i_offset] = c_offset;
+        indices[i * 3 + 2 + i_offset] = v_offset + i + 1;
     }
     
-    vertices[NUM_VERTICES + vertex_offset].color = p.color;
-    vertices[NUM_VERTICES + vertex_offset].position = transformVertex(p.center,
-            cell_center);
-    vertices[NUM_VERTICES + vertex_offset].cell_center = cell_center;
+    vertices[c_offset].color = p.color;
+    vertices[c_offset].position = cellToWorld(cell_corner, p.center); 
+    vertices[c_offset].origin = cell_corner;
 
-    indices[NUM_VERTICES * 3 - 1 + index_offset] = vertex_offset;
+    indices[NUM_VERTICES * 3 - 1 + i_offset] = v_offset;
 }

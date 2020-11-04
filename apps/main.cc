@@ -69,6 +69,9 @@ int main(int argc, char *argv[])
     glDebugMessageCallback(MessageCallback, 0);
 
     glEnable(GL_CLIP_DISTANCE0);
+    glEnable(GL_CLIP_DISTANCE1);
+    glEnable(GL_CLIP_DISTANCE2);
+    glEnable(GL_CLIP_DISTANCE3);
 
     // Generate initial polygons.
     std::vector<Polygon> polygons(NUM_POLYGONS);
