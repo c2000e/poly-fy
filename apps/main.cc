@@ -1,5 +1,7 @@
 #include "gl_helper/shader.h"
 #include "polygons/polygon.h"
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb/stb_image.h"
 
 #include "SDL.h"
 #include "GL/glew.h"
@@ -27,7 +29,10 @@ void GLAPIENTRY MessageCallback(GLenum source, GLenum type, GLuint id,
 
 int main(int argc, char *argv[])
 {
-    // Initialize SDL2 and GLEW for OpenGL-based rendering.
+    //=========================================================================
+    // Initialize SDL2, GLEW, and OpenGL.
+    //=========================================================================
+
     if (SDL_Init(SDL_INIT_EVERYTHING) < 0)
     {
         std::cerr << "SDL INIT ERROR: " << SDL_GetError() << std::endl;
@@ -68,10 +73,159 @@ int main(int argc, char *argv[])
     glEnable(GL_DEBUG_OUTPUT);
     glDebugMessageCallback(MessageCallback, 0);
 
+    // Enable custom clipping to clip polygons to their cells.
     glEnable(GL_CLIP_DISTANCE0);
     glEnable(GL_CLIP_DISTANCE1);
     glEnable(GL_CLIP_DISTANCE2);
     glEnable(GL_CLIP_DISTANCE3);
+
+    //=========================================================================
+    // Setup common texture rendering components.
+    //=========================================================================
+
+    std::vector<ShaderSource> quad_rend_source = {
+        ShaderSource(GL_VERTEX_SHADER, "shaders/quad.vert"),
+        ShaderSource(GL_FRAGMENT_SHADER, "shaders/quad.frag")
+    };
+
+    Shader quad_rend(quad_rend_source);
+
+    std::array<GLfloat, 16> quad_vertices = {
+        //  x,     y,      u,    v
+        -1.0f,  1.0f,   0.0f, 1.0f, // top left
+        -1.0f, -1.0f,   0.0f, 0.0f, // bottom left
+         1.0f, -1.0f,   1.0f, 0.0f, // bottom right
+         1.0f,  1.0f,   1.0f, 1.0f  // top right
+    };
+
+    std::array<GLuint, 6> quad_elements = {
+        1, 3, 0,
+        1, 2, 3
+    };
+
+    GLuint quad_vao;
+    glGenVertexArrays(1, &quad_vao);
+    glBindVertexArray(quad_vao);
+
+    GLuint quad_vbo;
+    glGenBuffers(1, &quad_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, quad_vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * quad_vertices.size(),
+            &quad_vertices.front(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat),
+            (GLvoid*) 0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat),
+            (GLvoid*) (2 * sizeof(GLfloat)));
+    glEnableVertexAttribArray(1);
+
+    GLuint quad_ebo;
+    glGenBuffers(1, &quad_ebo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, quad_ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint)
+            * quad_elements.size(), &quad_elements.front(), GL_STATIC_DRAW);
+    
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+    //=========================================================================
+    // Setup target texture.
+    //=========================================================================
+
+    // Create a texture to hold a tiled version of the target image.
+    GLuint target_texture;
+    glGenTextures(1, &target_texture);
+    glBindTexture(GL_TEXTURE_2D, target_texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, WIDTH, HEIGHT, 0, GL_RGBA,
+            GL_UNSIGNED_BYTE, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    // Create a framebuffer to render to the target texture.
+    GLuint target_fbo;
+    glGenFramebuffers(1, &target_fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, target_fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+            target_texture, 0);
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+    {
+        std::cerr << "GL FRAMEBUFFER ERROR: "
+            << glCheckFramebufferStatus(GL_FRAMEBUFFER) << std::endl;
+    }
+
+    // Create a temporary texture to hold the target image.
+    GLuint raw_target_texture;
+    glGenTextures(1, &raw_target_texture);
+    glBindTexture(GL_TEXTURE_2D, raw_target_texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    // Load the target image into the texture.
+    int w, h, n;
+    unsigned char* image = stbi_load("test.png", &w, &h, &n, STBI_rgb_alpha);
+    if (image != NULL)
+    {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, w, h, 0, GL_RGBA,
+                GL_UNSIGNED_BYTE, image);
+        stbi_image_free(image);
+    }
+    else
+    {
+        std::cerr << "STB IMAGE LOAD ERROR" << std::endl;
+    }
+
+    std::array<GLfloat, 16> target_vertices = {
+        //  x,     y,             u,           v
+        -1.0f,  1.0f,          0.0f,        0.0f, // tl
+        -1.0f, -1.0f,          0.0f, NUM_CELLS_Y, // bl
+         1.0f, -1.0f,   NUM_CELLS_X, NUM_CELLS_Y, // br
+         1.0f,  1.0f,   NUM_CELLS_X,        0.0f // tr
+    };
+
+    GLuint target_vao;
+    glGenVertexArrays(1, &target_vao);
+    glBindVertexArray(target_vao);
+
+    GLuint target_vbo;
+    glGenBuffers(1, &target_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, target_vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * target_vertices.size(),
+            &target_vertices.front(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat),
+            (GLvoid*) 0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat),
+            (GLvoid*) (2 * sizeof(GLfloat)));
+    glEnableVertexAttribArray(1);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, quad_ebo);
+
+    quad_rend.use();
+
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (GLvoid*) 0);
+
+    // cleanup
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    quad_rend.unuse();
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+    glDeleteFramebuffers(1, &target_fbo);
+    glDeleteTextures(1, &raw_target_texture);
+    glDeleteVertexArrays(1, &target_vao);
+    glDeleteBuffers(1, &target_vbo);
+
+    //=========================================================================
+    // Initialize polygon population and buffers.
+    //=========================================================================
 
     // Generate initial polygons.
     std::vector<Polygon> polygons(NUM_POLYGONS);
@@ -148,7 +302,10 @@ int main(int argc, char *argv[])
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-    // Render loop starts here.
+    //=========================================================================
+    // Render loop. 
+    //=========================================================================
+
     SDL_Event windowEvent;
     while (true)
     {
@@ -187,10 +344,16 @@ int main(int argc, char *argv[])
         SDL_GL_SwapWindow(window);
     }
 
+    //=========================================================================
+    // Cleanup.
+    //=========================================================================
+
     glDeleteBuffers(1, &polygon_buffer);
     glDeleteBuffers(1, &polygon_vbo);
     glDeleteBuffers(1, &polygon_ibo);
     glDeleteVertexArrays(1, &polygon_vao);
+
+    glDeleteTextures(1, &target_texture);
 
     glDeleteProgram(polygon_comp.handle);
     glDeleteProgram(polygon_rend.handle);
