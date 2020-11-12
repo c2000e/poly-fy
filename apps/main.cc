@@ -1,4 +1,6 @@
+#include "gl_helper/framebuffer.h"
 #include "gl_helper/shader.h"
+#include "gl_helper/texture.h"
 #include "polygons/polygon.h"
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb/stb_image.h"
@@ -135,36 +137,17 @@ int main(int argc, char *argv[])
 
     // Create a texture to hold a tiled version of the target image.
     GLuint target_texture;
-    glGenTextures(1, &target_texture);
-    glBindTexture(GL_TEXTURE_2D, target_texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, WIDTH, HEIGHT, 0, GL_RGBA,
-            GL_UNSIGNED_BYTE, 0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    create_blank_texture(target_texture, WIDTH, HEIGHT);
 
     // Create a framebuffer to render to the target texture.
     GLuint target_fbo;
-    glGenFramebuffers(1, &target_fbo);
+    create_framebuffer(target_fbo, target_texture);
     glBindFramebuffer(GL_FRAMEBUFFER, target_fbo);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
-            target_texture, 0);
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-    {
-        std::cerr << "GL FRAMEBUFFER ERROR: "
-            << glCheckFramebufferStatus(GL_FRAMEBUFFER) << std::endl;
-    }
 
     // Create a temporary texture to hold the target image.
     GLuint raw_target_texture;
-    glGenTextures(1, &raw_target_texture);
+    create_empty_texture(raw_target_texture);
     glBindTexture(GL_TEXTURE_2D, raw_target_texture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
     // Load the target image into the texture.
     int w, h, n;
@@ -210,6 +193,8 @@ int main(int argc, char *argv[])
 
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (GLvoid*) 0);
 
+    glBindTexture(GL_TEXTURE_2D, 0);
+
     // cleanup
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -218,8 +203,9 @@ int main(int argc, char *argv[])
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-    glDeleteFramebuffers(1, &target_fbo);
     glDeleteTextures(1, &raw_target_texture);
+
+    glDeleteFramebuffers(1, &target_fbo);
     glDeleteVertexArrays(1, &target_vao);
     glDeleteBuffers(1, &target_vbo);
 
