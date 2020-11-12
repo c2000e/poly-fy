@@ -3,7 +3,7 @@
 layout(location = 2) in vec2 tex_coord;
 layout(location = 0) out vec4 color;
 
-uniform sampler2D tex;
+layout(binding = 0) uniform sampler2D tex;
 
 void main()
 {

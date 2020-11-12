@@ -225,6 +225,19 @@ int main(int argc, char *argv[])
     GLuint current_fbo;
     create_framebuffer(current_fbo, current_texture);
 
+    GLuint difference_texture;
+    create_blank_texture(difference_texture, WIDTH, HEIGHT);
+    
+    GLuint difference_fbo;
+    create_framebuffer(difference_fbo, difference_texture);
+    
+    std::vector<ShaderSource> difference_rend_source = {
+        ShaderSource(GL_VERTEX_SHADER, "shaders/quad.vert"),
+        ShaderSource(GL_FRAGMENT_SHADER, "shaders/difference.frag")
+    };
+
+    Shader difference_rend(difference_rend_source);
+
     //=========================================================================
     // Initialize polygon population and buffers.
     //=========================================================================
@@ -354,9 +367,26 @@ int main(int argc, char *argv[])
         glBindVertexArray(0);
         polygon_rend.unuse();
 
-        // Render current_texture to the screen.
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        // Render difference_texture
+        glBindFramebuffer(GL_FRAMEBUFFER, difference_fbo);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, target_texture);
+        glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, current_texture);
+
+        difference_rend.use();
+        glBindVertexArray(quad_vao);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (GLvoid*) 0);
+        glBindVertexArray(0);
+        difference_rend.unuse();
+
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        // Render difference_texture to the screen.
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindTexture(GL_TEXTURE_2D, difference_texture);
 
         quad_rend.use();
         glBindVertexArray(quad_vao);
