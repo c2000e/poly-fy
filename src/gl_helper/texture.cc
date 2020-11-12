@@ -23,5 +23,6 @@ void create_blank_texture(GLuint& handle, int width, int height)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA,
             GL_UNSIGNED_BYTE, 0);
 
+    glBindTexture(GL_TEXTURE_2D, 0);
 }
 

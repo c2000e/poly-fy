@@ -210,6 +210,22 @@ int main(int argc, char *argv[])
     glDeleteBuffers(1, &target_vbo);
 
     //=========================================================================
+    // Setup polygon textures.
+    //=========================================================================
+
+    // Setup texture to store finalized frames.
+    GLuint base_texture;
+    create_blank_texture(base_texture, WIDTH, HEIGHT);
+
+    // Setup texture to store current frame.
+    GLuint current_texture;
+    create_blank_texture(current_texture, WIDTH, HEIGHT);
+
+    // Setup framebuffer to render to current_texture
+    GLuint current_fbo;
+    create_framebuffer(current_fbo, current_texture);
+
+    //=========================================================================
     // Initialize polygon population and buffers.
     //=========================================================================
 
@@ -310,23 +326,47 @@ int main(int argc, char *argv[])
             }
         }
 
-        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-
+        // Generate polygon vertex and index arrays.
         polygon_comp.use();
         glDispatchCompute(1, 1, 1);
         polygon_comp.unuse();
-
-        polygon_rend.use();
-        glBindVertexArray(polygon_vao);
         glMemoryBarrier(GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT
                 | GL_ELEMENT_ARRAY_BARRIER_BIT);
+
+        // Render base_texture into current_texture.
+        glBindFramebuffer(GL_FRAMEBUFFER, current_fbo);
+        glBindTexture(GL_TEXTURE_2D, base_texture);
+
+        quad_rend.use();
+        glBindVertexArray(quad_vao);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (GLvoid*) 0);
+        glBindVertexArray(0);
+        quad_rend.unuse();
+
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        // Render polygons onto current_texture.
+        polygon_rend.use();
+        glBindVertexArray(polygon_vao);
         glDrawElements(GL_TRIANGLES,
                 NUM_VERTICES * 3 * NUM_POLYGONS, GL_UNSIGNED_INT,
                 (GLvoid*) 0);
         glBindVertexArray(0);
         polygon_rend.unuse();
 
+        // Render current_texture to the screen.
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindTexture(GL_TEXTURE_2D, current_texture);
+
+        quad_rend.use();
+        glBindVertexArray(quad_vao);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (GLvoid*) 0);
+        glBindVertexArray(0);
+        quad_rend.unuse();
+
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        // Display results.
         SDL_GL_SwapWindow(window);
     }
 
@@ -339,7 +379,8 @@ int main(int argc, char *argv[])
     glDeleteBuffers(1, &polygon_ibo);
     glDeleteVertexArrays(1, &polygon_vao);
 
-    glDeleteTextures(1, &target_texture);
+    glDeleteTextures(1, &base_texture);
+    glDeleteTextures(1, &current_texture);
 
     glDeleteProgram(polygon_comp.handle);
     glDeleteProgram(polygon_rend.handle);
