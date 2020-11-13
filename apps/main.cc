@@ -238,6 +238,27 @@ int main(int argc, char *argv[])
 
     Shader difference_rend(difference_rend_source);
 
+    GLuint average_buffer;
+    glGenBuffers(1, & average_buffer);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, average_buffer);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(GLfloat) * NUM_POLYGONS, 0,
+            GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, average_buffer);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+    std::vector<ShaderSource> average_comp_source = {
+        ShaderSource(GL_COMPUTE_SHADER, "shaders/average.comp")
+    };
+
+    Shader average_comp(average_comp_source);
+
+    average_comp.use();
+    GLuint diff_tex_loc = glGetUniformLocation(average_comp.handle,
+            "diff_tex");
+    glUniform1i(diff_tex_loc, 0);
+    average_comp.unuse();
+
+
     //=========================================================================
     // Initialize polygon population and buffers.
     //=========================================================================
@@ -367,6 +388,8 @@ int main(int argc, char *argv[])
         glBindVertexArray(0);
         polygon_rend.unuse();
 
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
         // Render difference_texture
         glBindFramebuffer(GL_FRAMEBUFFER, difference_fbo);
         glActiveTexture(GL_TEXTURE0);
@@ -383,9 +406,22 @@ int main(int argc, char *argv[])
         glBindTexture(GL_TEXTURE_2D, 0);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        // Compute average differences.
+        glBindImageTexture(0, difference_texture, 0, GL_FALSE, 0,
+                GL_READ_WRITE, GL_RGBA32F);
+
+        average_comp.use();
+        glDispatchCompute(NUM_CELLS_X, NUM_CELLS_Y, 1);
+        average_comp.unuse();
+
+        GLfloat average_data[NUM_POLYGONS];
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, average_buffer);
+        glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0,
+                sizeof(GLfloat) * NUM_POLYGONS, &average_data);
 
         // Render difference_texture to the screen.
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glBindTexture(GL_TEXTURE_2D, difference_texture);
 
         quad_rend.use();

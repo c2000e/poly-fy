@@ -1,0 +1,83 @@
+#version 430
+
+layout(local_size_x = 32, local_size_y = 32) in;
+
+layout(binding = 3, std430) buffer average_buffer
+{
+    float averages[];
+};
+
+layout (rgba32f) uniform image2D diff_tex;
+
+const int CELL_SIZE = 128;
+
+
+ivec2 getCoordX(int i, int num_active)
+{
+    return ivec2(
+            gl_LocalInvocationID.x + (i + 1) * num_active,
+            gl_LocalInvocationID.y
+    );
+}
+
+ivec2 getCoordY(int i, int num_active)
+{
+    return ivec2(
+            gl_LocalInvocationID.x,
+            gl_LocalInvocationID.y + (i + 1) * num_active
+    );
+}
+
+ivec2 getCoordXY(int i, int num_active)
+{
+    return ivec2(gl_LocalInvocationID.xy) + (i + 1) * num_active;
+}
+
+
+void main()
+{
+    ivec2 c_offset = ivec2(gl_WorkGroupID.xy) * CELL_SIZE;
+    
+    int num_active = 32;
+
+    vec4 value = vec4(0.0);
+
+    // decrease large image to 32x32
+    if (gl_LocalInvocationID.x < num_active
+            && gl_LocalInvocationID.y < num_active)
+    {
+        value = imageLoad(diff_tex, ivec2(c_offset + gl_LocalInvocationID.xy));
+        for (int i = 0; i <= CELL_SIZE / 64; i++)
+        {
+            value += imageLoad(diff_tex, c_offset + getCoordX(i, num_active))
+                   + imageLoad(diff_tex, c_offset + getCoordY(i, num_active))
+                   + imageLoad(diff_tex, c_offset + getCoordXY(i, num_active));
+        }
+        imageStore(diff_tex, c_offset + ivec2(gl_LocalInvocationID.xy), value);
+        memoryBarrierImage();
+        barrier();
+
+        num_active /= 2;
+    }
+
+    // decrease 32x32 or smaller image to 1x1
+    while (gl_LocalInvocationID.x < num_active
+            && gl_LocalInvocationID.y < num_active)
+    {
+        value = imageLoad(diff_tex, c_offset + ivec2(gl_LocalInvocationID.xy))
+              + imageLoad(diff_tex, c_offset + getCoordX(0, num_active))
+              + imageLoad(diff_tex, c_offset + getCoordY(0, num_active))
+              + imageLoad(diff_tex, c_offset + getCoordXY(0, num_active));
+        imageStore(diff_tex, c_offset + ivec2(gl_LocalInvocationID.xy), value);
+        memoryBarrierImage();
+        barrier();
+
+        num_active /= 2;
+    }
+
+    if (gl_LocalInvocationIndex == 0)
+    {
+        averages[gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x] =
+            (value.r + value.g + value.b) / (3 * CELL_SIZE * CELL_SIZE);
+    }
+}
