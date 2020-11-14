@@ -21,7 +21,7 @@ add_custom_target(
 add_executable(poly_fy main.cc)
 target_compile_features(poly_fy PRIVATE cxx_std_11)
 target_include_directories(poly_fy PRIVATE ../include)
-target_link_libraries(poly_fy PRIVATE polygons gl_helper glew GLU GL SDL2main
+target_link_libraries(poly_fy PRIVATE polygons glew GLU GL SDL2main
     SDL2-static)
 
 add_dependencies(poly_fy copy_shader_files)

@@ -4,6 +4,7 @@ layout(location = 0) in vec4 in_color;
 layout(location = 1) in vec2 position;
 layout(location = 2) in vec2 origin;
 layout(location = 3) out vec4 out_color;
+layout(location = 4) out vec2 tex_coord;
 
 out gl_PerVertex
 {
@@ -29,4 +30,5 @@ void main()
     gl_ClipDistance[3] = top_right.y - position.y;
 
     out_color = in_color;
+    tex_coord = vec2(position.x / SCREEN_SIZE, position.y / SCREEN_SIZE);
 }

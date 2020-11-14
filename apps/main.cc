@@ -1,6 +1,10 @@
 #include "gl_helper/framebuffer.h"
+#include "gl_helper/index_buffer.h"
 #include "gl_helper/shader.h"
+#include "gl_helper/storage_buffer.h"
 #include "gl_helper/texture.h"
+#include "gl_helper/vertex_array.h"
+#include "gl_helper/vertex_buffer.h"
 #include "polygons/polygon.h"
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb/stb_image.h"
@@ -9,6 +13,7 @@
 #include "GL/glew.h"
 #include "SDL_opengl.h"
 
+#include <algorithm>
 #include <iostream>
 
 const GLint WIDTH = 512, HEIGHT = 512;
@@ -72,8 +77,8 @@ int main(int argc, char *argv[])
 
     glViewport(0, 0, WIDTH, HEIGHT);
     
-    glEnable(GL_DEBUG_OUTPUT);
-    glDebugMessageCallback(MessageCallback, 0);
+    //glEnable(GL_DEBUG_OUTPUT);
+    //glDebugMessageCallback(MessageCallback, 0);
 
     // Enable custom clipping to clip polygons to their cells.
     glEnable(GL_CLIP_DISTANCE0);
@@ -85,14 +90,10 @@ int main(int argc, char *argv[])
     // Setup common texture rendering components.
     //=========================================================================
 
-    std::vector<ShaderSource> quad_rend_source = {
-        ShaderSource(GL_VERTEX_SHADER, "shaders/quad.vert"),
-        ShaderSource(GL_FRAGMENT_SHADER, "shaders/quad.frag")
-    };
+    GLuint quad_rend;
+    create_rend_shader(quad_rend, "shaders/quad.vert", "shaders/quad.frag");
 
-    Shader quad_rend(quad_rend_source);
-
-    std::array<GLfloat, 16> quad_vertices = {
+    std::array<GLfloat, 16> quad_verts = {
         //  x,     y,      u,    v
         -1.0f,  1.0f,   0.0f, 1.0f, // top left
         -1.0f, -1.0f,   0.0f, 0.0f, // bottom left
@@ -105,56 +106,41 @@ int main(int argc, char *argv[])
         1, 2, 3
     };
 
-    GLuint quad_vao;
-    glGenVertexArrays(1, &quad_vao);
-    glBindVertexArray(quad_vao);
+    GLuint quad_vb;
+    create_vertex_buffer(quad_vb, quad_verts.size(), &quad_verts.front(),
+            GL_STATIC_DRAW);
 
-    GLuint quad_vbo;
-    glGenBuffers(1, &quad_vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, quad_vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * quad_vertices.size(),
-            &quad_vertices.front(), GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat),
-            (GLvoid*) 0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat),
-            (GLvoid*) (2 * sizeof(GLfloat)));
-    glEnableVertexAttribArray(1);
-
-    GLuint quad_ebo;
-    glGenBuffers(1, &quad_ebo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, quad_ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint)
-            * quad_elements.size(), &quad_elements.front(), GL_STATIC_DRAW);
+    GLuint quad_ib;
+    create_index_buffer(quad_ib, quad_elements.size(), &quad_elements.front(),
+            GL_STATIC_DRAW);
     
-    glBindVertexArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    std::array<int, 2> quad_vert = {2, 2};
+
+    GLuint quad_va;
+    create_vertex_array(quad_va, quad_vb, quad_ib, quad_vert.begin(),
+            quad_vert.end());
 
     //=========================================================================
     // Setup target texture.
     //=========================================================================
 
     // Create a texture to hold a tiled version of the target image.
-    GLuint target_texture;
-    create_blank_texture(target_texture, WIDTH, HEIGHT);
+    GLuint targ_tex;
+    create_texture(targ_tex, WIDTH, HEIGHT);
 
-    // Create a framebuffer to render to the target texture.
-    GLuint target_fbo;
-    create_framebuffer(target_fbo, target_texture);
-    glBindFramebuffer(GL_FRAMEBUFFER, target_fbo);
+    GLuint targ_fb;
+    create_framebuffer(targ_fb, targ_tex);
 
     // Create a temporary texture to hold the target image.
-    GLuint raw_target_texture;
-    create_empty_texture(raw_target_texture);
-    glBindTexture(GL_TEXTURE_2D, raw_target_texture);
+    GLuint targ_tex_raw;
+    create_texture(targ_tex_raw, WIDTH, HEIGHT);
 
     // Load the target image into the texture.
     int w, h, n;
     unsigned char* image = stbi_load("test.png", &w, &h, &n, STBI_rgb_alpha);
     if (image != NULL)
     {
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, w, h, 0, GL_RGBA,
+        glTextureSubImage2D(targ_tex_raw, 0, 0, 0, WIDTH, HEIGHT, GL_RGBA,
                 GL_UNSIGNED_BYTE, image);
         stbi_image_free(image);
     }
@@ -163,7 +149,7 @@ int main(int argc, char *argv[])
         std::cerr << "STB IMAGE LOAD ERROR" << std::endl;
     }
 
-    std::array<GLfloat, 16> target_vertices = {
+    std::array<GLfloat, 16> targ_verts = {
         //  x,     y,             u,           v
         -1.0f,  1.0f,          0.0f,        0.0f, // tl
         -1.0f, -1.0f,          0.0f, NUM_CELLS_Y, // bl
@@ -171,93 +157,73 @@ int main(int argc, char *argv[])
          1.0f,  1.0f,   NUM_CELLS_X,        0.0f // tr
     };
 
-    GLuint target_vao;
-    glGenVertexArrays(1, &target_vao);
-    glBindVertexArray(target_vao);
+    GLuint targ_vb;
+    create_vertex_buffer(targ_vb, targ_verts.size(), &targ_verts.front(),
+            GL_STATIC_DRAW);
 
-    GLuint target_vbo;
-    glGenBuffers(1, &target_vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, target_vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * target_vertices.size(),
-            &target_vertices.front(), GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat),
-            (GLvoid*) 0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat),
-            (GLvoid*) (2 * sizeof(GLfloat)));
-    glEnableVertexAttribArray(1);
+    std::array<int, 2> targ_vert = {2, 2};
 
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, quad_ebo);
+    GLuint targ_va;
+    create_vertex_array(targ_va, targ_vb, quad_ib, targ_vert.begin(),
+            targ_vert.end());
 
-    quad_rend.use();
+    glBindFramebuffer(GL_FRAMEBUFFER, targ_fb);
+    glBindTextureUnit(0, targ_tex_raw);
+    glBindVertexArray(targ_va);
+    glUseProgram(quad_rend);
 
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (GLvoid*) 0);
 
-    glBindTexture(GL_TEXTURE_2D, 0);
-
-    // cleanup
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    quad_rend.unuse();
+    glUseProgram(0);
     glBindVertexArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glBindTextureUnit(0, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    glDeleteTextures(1, &raw_target_texture);
-
-    glDeleteFramebuffers(1, &target_fbo);
-    glDeleteVertexArrays(1, &target_vao);
-    glDeleteBuffers(1, &target_vbo);
-
-    //=========================================================================
-    // Setup polygon textures.
-    //=========================================================================
-
-    // Setup texture to store finalized frames.
-    GLuint base_texture;
-    create_blank_texture(base_texture, WIDTH, HEIGHT);
-
-    // Setup texture to store current frame.
-    GLuint current_texture;
-    create_blank_texture(current_texture, WIDTH, HEIGHT);
-
-    // Setup framebuffer to render to current_texture
-    GLuint current_fbo;
-    create_framebuffer(current_fbo, current_texture);
-
-    GLuint difference_texture;
-    create_blank_texture(difference_texture, WIDTH, HEIGHT);
+    glDeleteVertexArrays(1, &targ_va);
+    glDeleteBuffers(1, &targ_vb);
+    glDeleteFramebuffers(1, &targ_fb);
+    glDeleteTextures(1, &targ_tex_raw);
     
-    GLuint difference_fbo;
-    create_framebuffer(difference_fbo, difference_texture);
+    //=========================================================================
+    // Setup miscellaneous textures.
+    //=========================================================================
+
+    // Used to store image generated so far.
+    GLuint base_tex;
+    create_texture(base_tex, WIDTH, HEIGHT);
+
+    GLuint base_fb;
+    create_framebuffer(base_fb, base_tex);
+
+    // Used to store the current generation's images.
+    GLuint curr_tex;
+    create_texture(curr_tex, WIDTH, HEIGHT);
+
+    GLuint curr_fb;
+    create_framebuffer(curr_fb, curr_tex);
+
+    // Used to store the difference of the current generation from the target.
+    GLuint diff_tex;
+    create_texture(diff_tex, WIDTH, HEIGHT);
     
-    std::vector<ShaderSource> difference_rend_source = {
-        ShaderSource(GL_VERTEX_SHADER, "shaders/quad.vert"),
-        ShaderSource(GL_FRAGMENT_SHADER, "shaders/difference.frag")
-    };
+    GLuint diff_fb;
+    create_framebuffer(diff_fb, diff_tex);
 
-    Shader difference_rend(difference_rend_source);
+    GLuint diff_rend;
+    create_rend_shader(diff_rend, "shaders/quad.vert", "shaders/diff.frag");
 
-    GLuint average_buffer;
-    glGenBuffers(1, & average_buffer);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, average_buffer);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(GLfloat) * NUM_POLYGONS, 0,
-            GL_DYNAMIC_DRAW);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, average_buffer);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    // Used to store the average differences (per image).
+    GLuint avrg_sb;
+    create_storage_buffer(avrg_sb, NUM_POLYGONS, 0, GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, avrg_sb);
 
-    std::vector<ShaderSource> average_comp_source = {
-        ShaderSource(GL_COMPUTE_SHADER, "shaders/average.comp")
-    };
+    GLuint avrg_comp;
+    create_comp_shader(avrg_comp, "shaders/avrg.comp");
 
-    Shader average_comp(average_comp_source);
-
-    average_comp.use();
-    GLuint diff_tex_loc = glGetUniformLocation(average_comp.handle,
-            "diff_tex");
+    glUseProgram(avrg_comp);
+    GLuint diff_tex_loc = glGetUniformLocation(avrg_comp, "diff_tex");
     glUniform1i(diff_tex_loc, 0);
-    average_comp.unuse();
-
+    glUseProgram(0);
 
     //=========================================================================
     // Initialize polygon population and buffers.
@@ -265,83 +231,47 @@ int main(int argc, char *argv[])
 
     // Generate initial polygons.
     std::vector<Polygon> polygons(NUM_POLYGONS);
-    std::vector<GLfloat> polygon_buffer_data;
+    std::vector<GLfloat> poly_data;
     for (int i = 0; i < NUM_POLYGONS; i++)
     {
-        polygons[i].pushTo(polygon_buffer_data);
+        polygons[i].pushTo(poly_data);
     }
 
     // Setup polygon compute shader.
-    std::vector<ShaderSource> polygon_comp_source = {
-        ShaderSource(GL_COMPUTE_SHADER, "shaders/polygon.comp")
-    };
-    Shader polygon_comp(polygon_comp_source);
+    GLuint poly_comp;
+    create_comp_shader(poly_comp, "shaders/poly.comp");
     
     // Setup polygon compute shader buffer.
-    GLuint polygon_buffer;
-    glGenBuffers(1, &polygon_buffer);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, polygon_buffer);
-    glBufferData(GL_SHADER_STORAGE_BUFFER,
-            sizeof(GLfloat) * polygon_buffer_data.size(),
-            &polygon_buffer_data.front(), GL_DYNAMIC_DRAW);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, polygon_buffer);
+    GLuint poly_sb;
+    create_storage_buffer(poly_sb, poly_data.size(), &poly_data.front(),
+            GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, poly_sb);
 
     // Setup polygon rendering shader.
-    std::vector<ShaderSource> polygon_rend_source = {
-        ShaderSource(GL_VERTEX_SHADER, "shaders/polygon.vert"),
-        ShaderSource(GL_FRAGMENT_SHADER, "shaders/polygon.frag")
-    };
-    Shader polygon_rend(polygon_rend_source);
+    GLuint poly_rend;
+    create_rend_shader(poly_rend, "shaders/poly.vert", "shaders/poly.frag");
 
-    // Create polygon vbo and ibo.
-    GLuint polygon_vbo;
-    glGenBuffers(1, &polygon_vbo);
+    // Setup polygon vertex and index buffers.
+    GLuint poly_vb;
+    create_vertex_buffer(poly_vb, (NUM_VERTICES + 1) * 8 * NUM_POLYGONS,
+            NULL, GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, poly_vb);
 
-    GLuint polygon_ibo;
-    glGenBuffers(1, &polygon_ibo);
-
-    // Setup polygon vbo and ibo for compute shader writing.
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, polygon_vbo);
-    glBufferData(GL_SHADER_STORAGE_BUFFER,
-            sizeof(GLfloat) * (NUM_VERTICES + 1) * 8 * NUM_POLYGONS, NULL,
+    GLuint poly_ib;
+    create_index_buffer(poly_ib, NUM_VERTICES * 3 * NUM_POLYGONS, NULL,
             GL_DYNAMIC_DRAW);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, polygon_vbo);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, poly_ib);
 
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, polygon_ibo);
-    glBufferData(GL_SHADER_STORAGE_BUFFER,
-            sizeof(GLuint) * NUM_VERTICES * 3 * NUM_POLYGONS, NULL,
-            GL_DYNAMIC_DRAW);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, polygon_ibo);
+    std::array<int, 3> poly_vert = {4, 2, 2};
 
-    // Setup polygon vbo and ibo for render reading.
-    GLuint polygon_vao;
-    glGenVertexArrays(1, &polygon_vao);
-    glBindVertexArray(polygon_vao);
-
-    glBindBuffer(GL_ARRAY_BUFFER, polygon_vbo);
-    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat),
-            (GLvoid*) 0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat),
-            (GLvoid*) (4 * sizeof(GLfloat))); 
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat),
-            (GLvoid*) (6 * sizeof(GLfloat)));
-    glEnableVertexAttribArray(2);
-    
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, polygon_ibo);
-
-    glBindVertexArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    GLuint poly_va;
+    create_vertex_array(poly_va, poly_vb, poly_ib,
+            poly_vert.begin(), poly_vert.end());
 
     //=========================================================================
     // Render loop. 
     //=========================================================================
-
+    
     SDL_Event windowEvent;
     while (true)
     {
@@ -361,76 +291,74 @@ int main(int argc, char *argv[])
         }
 
         // Generate polygon vertex and index arrays.
-        polygon_comp.use();
+        glUseProgram(poly_comp);
         glDispatchCompute(1, 1, 1);
-        polygon_comp.unuse();
+        glUseProgram(0);
         glMemoryBarrier(GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT
                 | GL_ELEMENT_ARRAY_BARRIER_BIT);
 
         // Render base_texture into current_texture.
-        glBindFramebuffer(GL_FRAMEBUFFER, current_fbo);
-        glBindTexture(GL_TEXTURE_2D, base_texture);
-
-        quad_rend.use();
-        glBindVertexArray(quad_vao);
+        glBindFramebuffer(GL_FRAMEBUFFER, curr_fb);
+        glBindTextureUnit(0, base_tex);
+        glBindVertexArray(quad_va);
+        glUseProgram(quad_rend);
+        
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (GLvoid*) 0);
-        glBindVertexArray(0);
-        quad_rend.unuse();
 
-        glBindTexture(GL_TEXTURE_2D, 0);
+        glUseProgram(0);
+        glBindVertexArray(0);
+        glBindTextureUnit(0, 0);
 
         // Render polygons onto current_texture.
-        polygon_rend.use();
-        glBindVertexArray(polygon_vao);
+        glBindVertexArray(poly_va);
+        glUseProgram(poly_rend);
         glDrawElements(GL_TRIANGLES,
                 NUM_VERTICES * 3 * NUM_POLYGONS, GL_UNSIGNED_INT,
                 (GLvoid*) 0);
+        glUseProgram(0);
         glBindVertexArray(0);
-        polygon_rend.unuse();
 
+        glBindTexture(GL_TEXTURE_2D, 0);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         // Render difference_texture
-        glBindFramebuffer(GL_FRAMEBUFFER, difference_fbo);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, target_texture);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, current_texture);
+        glBindFramebuffer(GL_FRAMEBUFFER, diff_fb);
+        glBindTextureUnit(0, targ_tex);
+        glBindTextureUnit(1, curr_tex);
 
-        difference_rend.use();
-        glBindVertexArray(quad_vao);
+        glBindVertexArray(quad_va);
+        glUseProgram(diff_rend);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (GLvoid*) 0);
+        glUseProgram(0);
         glBindVertexArray(0);
-        difference_rend.unuse();
 
-        glBindTexture(GL_TEXTURE_2D, 0);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, 0);
+        glBindTextureUnit(1, 0);
+        glBindTextureUnit(0, 0);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         // Compute average differences.
-        glBindImageTexture(0, difference_texture, 0, GL_FALSE, 0,
-                GL_READ_WRITE, GL_RGBA32F);
+        glBindImageTexture(0, diff_tex, 0, GL_FALSE, 0, GL_READ_WRITE,
+                GL_RGBA32F);
 
-        average_comp.use();
+        glUseProgram(avrg_comp);
         glDispatchCompute(NUM_CELLS_X, NUM_CELLS_Y, 1);
-        average_comp.unuse();
+        glUseProgram(0);
 
         GLfloat average_data[NUM_POLYGONS];
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, average_buffer);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, avrg_sb);
         glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0,
                 sizeof(GLfloat) * NUM_POLYGONS, &average_data);
 
-        // Render difference_texture to the screen.
-        glBindTexture(GL_TEXTURE_2D, difference_texture);
+        // Render current_texture to the screen.
+        glBindTextureUnit(0, curr_tex);
 
-        quad_rend.use();
-        glBindVertexArray(quad_vao);
+        glBindVertexArray(quad_va);
+        glUseProgram(quad_rend);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (GLvoid*) 0);
+        glUseProgram(0);
         glBindVertexArray(0);
-        quad_rend.unuse();
 
-        glBindTexture(GL_TEXTURE_2D, 0);
+        glBindTextureUnit(0, 0);
 
         // Display results.
         SDL_GL_SwapWindow(window);
@@ -440,16 +368,21 @@ int main(int argc, char *argv[])
     // Cleanup.
     //=========================================================================
 
-    glDeleteBuffers(1, &polygon_buffer);
-    glDeleteBuffers(1, &polygon_vbo);
-    glDeleteBuffers(1, &polygon_ibo);
-    glDeleteVertexArrays(1, &polygon_vao);
+    glDeleteBuffers(1, &poly_sb);
+    glDeleteBuffers(1, &poly_vb);
+    glDeleteBuffers(1, &poly_ib);
+    glDeleteVertexArrays(1, &poly_va);
 
-    glDeleteTextures(1, &base_texture);
-    glDeleteTextures(1, &current_texture);
+    glDeleteTextures(1, &base_tex);
+    glDeleteTextures(1, &curr_tex);
+    glDeleteTextures(1, &targ_tex);
+    glDeleteTextures(1, &diff_tex);
 
-    glDeleteProgram(polygon_comp.handle);
-    glDeleteProgram(polygon_rend.handle);
+    glDeleteProgram(poly_comp);
+    glDeleteProgram(poly_rend);
+    glDeleteProgram(quad_rend);
+    glDeleteProgram(avrg_comp);
+    glDeleteProgram(diff_rend);
 
     SDL_GL_DeleteContext(context);
     SDL_DestroyWindow(window);
