@@ -24,6 +24,7 @@ const uint NUM_CELLS_Y = 4;
 const uint NUM_POLYGONS = NUM_CELLS_X * NUM_CELLS_Y;
 
 const uint NUM_ELITE = 2;
+const uint MAX_STAGNATE = 512;
 
 // OpenGL debugging info 
 void GLAPIENTRY MessageCallback(GLenum source, GLenum type, GLuint id,
@@ -274,6 +275,10 @@ int main(int argc, char *argv[])
     // Render loop. 
     //=========================================================================
     
+    GLfloat max_fitness = 0;
+    GLfloat last_fitness = 0;
+    int num_stagnate = 0;
+
     SDL_Event windowEvent;
     while (true)
     {
@@ -352,30 +357,88 @@ int main(int argc, char *argv[])
                 sizeof(GLfloat) * NUM_POLYGONS, &avrg_data);
 
         // Generate next generation of polygons.
-
         poly_data.clear(); 
 
         for (int i = 0; i < NUM_POLYGONS; i++)
         {
-            poly[i].fitness = 1 - avrg_data[i];
+            poly[i].fitness = pow(1 - avrg_data[i], 2);
         }
         std::sort(poly.begin(), poly.end(), [](Polygon a, Polygon b)
                 { return a.fitness > b.fitness; });
 
-        std::vector<Polygon> poly_new(NUM_POLYGONS);
-        for (int i = 0; i < NUM_ELITE; i++)
+        if (poly[0].fitness > max_fitness)
         {
-            poly_new[i] = poly[i];
-            poly_new[i].pushTo(poly_data);
+            max_fitness = poly[0].fitness;
+            num_stagnate = 0;
         }
-        for (int i = NUM_ELITE; i < NUM_POLYGONS; i++)
+        else
         {
-            poly_new[i] = Polygon(tournament(poly, 1, 0.75),
-                    tournament(poly, 1, 0.75));
-            poly_new[i].pushTo(poly_data);
+            num_stagnate++;
         }
-        poly = poly_new;
 
+        std::vector<Polygon> poly_new(NUM_POLYGONS);
+        if (num_stagnate < MAX_STAGNATE)
+        {
+            for (int i = 0; i < NUM_ELITE; i++)
+            {
+                poly_new[i] = poly[i];
+                poly_new[i].pushTo(poly_data);
+            }
+            for (int i = NUM_ELITE; i < NUM_POLYGONS; i++)
+            {
+                poly_new[i] = Polygon(tournament(poly, 1, 0.75),
+                        tournament(poly, 1, 0.75));
+                poly_new[i].pushTo(poly_data);
+            }
+            poly = poly_new;
+        }
+        else
+        {
+            num_stagnate = 0;
+
+            // Store the polygon if it improved the image.
+            if (poly[0].fitness > last_fitness)
+            {
+                last_fitness = poly[0].fitness;
+
+                for (int i = 0; i < NUM_POLYGONS; i++)
+                {
+                    poly[0].pushTo(poly_data);
+                }
+                glNamedBufferSubData(poly_sb, 0,
+                        sizeof(GLfloat) * poly_data.size(),
+                        &poly_data.front());
+
+                // Generate polygon vertex and index arrays.
+                glUseProgram(poly_comp);
+                glDispatchCompute(1, 1, 1);
+                glUseProgram(0);
+                glMemoryBarrier(GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT
+                        | GL_ELEMENT_ARRAY_BARRIER_BIT);
+
+                // Render polygons onto base_texture.
+                glBindFramebuffer(GL_FRAMEBUFFER, base_fb);
+                glBindVertexArray(poly_va);
+                glUseProgram(poly_rend);
+
+                glDrawElements(GL_TRIANGLES,
+                        NUM_VERTICES * 3 * NUM_POLYGONS, GL_UNSIGNED_INT,
+                        (GLvoid*) 0);
+                
+                glUseProgram(0);
+                glBindVertexArray(0);
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            }
+
+            // Generate new set of random polygons.
+            for (int i = 0; i < NUM_POLYGONS; i++)
+            {
+                poly[i] = Polygon();
+                poly[i].pushTo(poly_data);
+            }
+        }
+
+        // Store new polygons for next pass.
         glNamedBufferSubData(poly_sb, 0, sizeof(GLfloat) * poly_data.size(),
                 &poly_data.front());
 

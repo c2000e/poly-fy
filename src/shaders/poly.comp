@@ -4,7 +4,6 @@ layout(local_size_x = 4, local_size_y = 4) in;
 
 const float PI = 3.1415926538;
 
-
 const float SCREEN_SIZE = 512.0;
 const float CELL_SIZE = SCREEN_SIZE / float(gl_WorkGroupSize.x);
 
@@ -49,7 +48,7 @@ vec2 cellToWorld(vec2 cell_corner, vec2 position)
 vec2 generatePosition(vec2 cell_corner, Polygon p, uint n)
 {
     // Calculate position in the range [-1, 2].
-    float t = 2 * PI * n / NUM_VERTICES;
+    float t = 2 * PI * (p.rotation + float(n) / NUM_VERTICES);
     vec2 position = p.center + p.radius * vec2(cos(t), sin(t));
 
     // Map position from [-1, 2] -> [-CELL_SIZE, SCREEN_SIZE + CELL_SIZE].

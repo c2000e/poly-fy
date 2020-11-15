@@ -12,6 +12,4 @@ void main()
             mix(texture(base_tex, tex_coord).rgb, in_color.rgb, in_color.a),
             1.0
     );
-
-    //out_color = in_color;
 }
