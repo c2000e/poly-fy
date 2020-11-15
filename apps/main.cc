@@ -23,6 +23,8 @@ const uint NUM_CELLS_X = 4;
 const uint NUM_CELLS_Y = 4;
 const uint NUM_POLYGONS = NUM_CELLS_X * NUM_CELLS_Y;
 
+const uint NUM_ELITE = 2;
+
 // OpenGL debugging info 
 void GLAPIENTRY MessageCallback(GLenum source, GLenum type, GLuint id,
         GLenum severity, GLsizei length, const GLchar* message,
@@ -230,11 +232,11 @@ int main(int argc, char *argv[])
     //=========================================================================
 
     // Generate initial polygons.
-    std::vector<Polygon> polygons(NUM_POLYGONS);
+    std::vector<Polygon> poly(NUM_POLYGONS);
     std::vector<GLfloat> poly_data;
     for (int i = 0; i < NUM_POLYGONS; i++)
     {
-        polygons[i].pushTo(poly_data);
+        poly[i].pushTo(poly_data);
     }
 
     // Setup polygon compute shader.
@@ -344,10 +346,38 @@ int main(int argc, char *argv[])
         glDispatchCompute(NUM_CELLS_X, NUM_CELLS_Y, 1);
         glUseProgram(0);
 
-        GLfloat average_data[NUM_POLYGONS];
+        GLfloat avrg_data[NUM_POLYGONS];
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, avrg_sb);
         glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0,
-                sizeof(GLfloat) * NUM_POLYGONS, &average_data);
+                sizeof(GLfloat) * NUM_POLYGONS, &avrg_data);
+
+        // Generate next generation of polygons.
+
+        poly_data.clear(); 
+
+        for (int i = 0; i < NUM_POLYGONS; i++)
+        {
+            poly[i].fitness = 1 - avrg_data[i];
+        }
+        std::sort(poly.begin(), poly.end(), [](Polygon a, Polygon b)
+                { return a.fitness > b.fitness; });
+
+        std::vector<Polygon> poly_new(NUM_POLYGONS);
+        for (int i = 0; i < NUM_ELITE; i++)
+        {
+            poly_new[i] = poly[i];
+            poly_new[i].pushTo(poly_data);
+        }
+        for (int i = NUM_ELITE; i < NUM_POLYGONS; i++)
+        {
+            poly_new[i] = Polygon(tournament(poly, 1, 0.75),
+                    tournament(poly, 1, 0.75));
+            poly_new[i].pushTo(poly_data);
+        }
+        poly = poly_new;
+
+        glNamedBufferSubData(poly_sb, 0, sizeof(GLfloat) * poly_data.size(),
+                &poly_data.front());
 
         // Render current_texture to the screen.
         glBindTextureUnit(0, curr_tex);
