@@ -1,6 +1,6 @@
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.16)
 
-project(poly_fy VERSION 0.1 LANGUAGES CXX)
+project(poly_fy VERSION 0.1)
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -10,7 +10,4 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(CMAKE_BUILD_TYPE DEBUG)
 
-include(FetchContent)
-
 add_subdirectory(apps)
-add_subdirectory(src)

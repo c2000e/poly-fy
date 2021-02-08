@@ -1,7 +1,7 @@
 #ifndef STORAGE_BUFFER_H
 #define STORAGE_BUFFER_H
 
-#include "GL/glew.h"
+#include "glad/glad.h"
 
 void create_storage_buffer(GLuint& handle, int size, GLfloat* first,
         GLenum mode) 

@@ -1,7 +1,7 @@
 #ifndef TEXTURE_H
 #define TEXTURE_H
 
-#include "GL/glew.h"
+#include "glad/glad.h"
 
 void create_texture(GLuint& handle, int width, int height)
 {

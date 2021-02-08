@@ -1,7 +1,7 @@
 #ifndef VERTEX_ARRAY_H
 #define VERTEX_ARRAY_H
 
-#include "GL/glew.h"
+#include "glad/glad.h"
 
 template<class Iter>
 void set_vertex_array_layout(const GLuint& handle, const GLuint& vertex_buffer,

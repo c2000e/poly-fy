@@ -1,7 +1,7 @@
 #ifndef INDEX_BUFFER_H
 #define INDEX_BUFFER_H
 
-#include "GL/glew.h"
+#include "glad/glad.h"
 
 void create_index_buffer(GLuint& handle, int size, GLuint* first, GLenum mode)
 {

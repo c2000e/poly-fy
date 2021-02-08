@@ -6,12 +6,14 @@
 #include "gl_helper/vertex_array.h"
 #include "gl_helper/vertex_buffer.h"
 #include "polygons/polygon.h"
+
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb/stb_image.h"
 
-#include "SDL.h"
-#include "GL/glew.h"
-#include "SDL_opengl.h"
+#include "glad/glad.h"
+
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_opengl.h>
 
 #include <algorithm>
 #include <iostream>
@@ -43,7 +45,7 @@ int main(int argc, char *argv[])
     // Initialize SDL2, GLEW, and OpenGL.
     //=========================================================================
 
-    if (SDL_Init(SDL_INIT_EVERYTHING) < 0)
+    if (SDL_Init(SDL_INIT_VIDEO) < 0)
     {
         std::cerr << "SDL INIT ERROR: " << SDL_GetError() << std::endl;
     }
@@ -67,17 +69,9 @@ int main(int argc, char *argv[])
     {
         std::cerr << "SDL GL CONTEXT ERROR: " << SDL_GetError() << std::endl;
     }
+
+    gladLoadGLLoader(SDL_GL_GetProcAddress);
  
-    glewExperimental = GL_TRUE;
-
-    GLenum glew_status = glewInit();
-    if (glew_status != GLEW_OK)
-    {
-        std::cerr << "GLEW ERROR: " << glewGetErrorString(glew_status)
-            << std::endl;
-        return EXIT_FAILURE;
-    }
-
     glViewport(0, 0, WIDTH, HEIGHT);
     
     //glEnable(GL_DEBUG_OUTPUT);
