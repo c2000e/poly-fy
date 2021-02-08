@@ -10,4 +10,4 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(CMAKE_BUILD_TYPE DEBUG)
 
-add_subdirectory(apps)
+add_subdirectory(src)

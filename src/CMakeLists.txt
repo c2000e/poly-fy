@@ -1,6 +1,3 @@
-add_library(glew STATIC IMPORTED)
-set_target_properties(glew PROPERTIES
-    IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/../extern/glew/libGLEW.a)
 
 find_package(OpenGL REQUIRED)
 find_package(SDL2 REQUIRED)
@@ -8,7 +5,7 @@ find_package(SDL2 REQUIRED)
 add_custom_target(
     copy_shader_files
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_BINARY_DIR})
 
 add_executable(poly_fy glad.c main.cc polygon.cc)
